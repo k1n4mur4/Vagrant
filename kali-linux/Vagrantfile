@@ -1,0 +1,260 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+# ============================================================
+# Kali Linux - Penetration Testing Environment
+# ============================================================
+# Host: Windows 11 / RAM 32GB / CPU 12 cores
+# Target: Web App, Network/Infra, WiFi, Active Directory
+# ============================================================
+# 必要なプラグイン:
+#   vagrant plugin install vagrant-disksize
+#   vagrant plugin install vagrant-reload
+#   vagrant plugin install vagrant-cachier
+#   vagrant plugin install vagrant-hostmanager
+# ============================================================
+
+Vagrant.configure("2") do |config|
+
+  # ----------------------------------------------------------
+  # Base Box
+  # ----------------------------------------------------------
+  config.vm.box = "kalilinux/rolling"
+  config.vm.hostname = "kali-pentest"
+
+  # ----------------------------------------------------------
+  # ディスク容量 (80GB) [vagrant-disksize]
+  # ----------------------------------------------------------
+  config.disksize.size = "80GB"
+
+  # ----------------------------------------------------------
+  # vagrant-hostmanager 設定
+  # ----------------------------------------------------------
+  # VM起動時にホスト側・ゲスト側の hostsファイルを自動更新
+  # → "kali-pentest" というホスト名でアクセスできるようになる
+  config.hostmanager.enabled = true
+  config.hostmanager.manage_host = true       # Windows側の hosts も更新
+  config.hostmanager.manage_guest = true      # VM側の hosts も更新
+  config.hostmanager.ignore_private_ip = false
+
+  # ----------------------------------------------------------
+  # vagrant-cachier 設定
+  # ----------------------------------------------------------
+  # apt パッケージのキャッシュをホスト側に保存
+  # → vagrant destroy → up してもダウンロードをスキップできる
+  if Vagrant.has_plugin?("vagrant-cachier")
+    config.cache.scope = :box
+    config.cache.auto_detect = true
+    config.cache.enable :apt
+    config.cache.enable :gem
+    config.cache.enable :pip
+  end
+
+  # ----------------------------------------------------------
+  # ネットワーク設定
+  # ----------------------------------------------------------
+
+  # ブリッジ接続（実ネットワークに参加 / DHCP）
+  # 起動時にブリッジ先のNICを選択するプロンプトが出ます
+  # 特定のNICを固定したい場合は以下のように bridge を指定:
+  #   config.vm.network "public_network", bridge: "Intel(R) Wi-Fi 6 AX201 160MHz"
+#   config.vm.network "public_network"
+  config.vm.network "public_network", bridge: "Intel(R) Wi-Fi 6E AX211 160MHz"
+
+  # ホストオンリー（VM ↔ ホスト間の管理用）
+  config.vm.network "private_network", ip: "192.168.56.100"
+
+  # ----------------------------------------------------------
+  # 共有フォルダ（ホスト ↔ VM 間のファイル共有）
+  # ----------------------------------------------------------
+  config.vm.synced_folder "C:\\pentest-share", "/home/vagrant/shared",
+    create: true,
+    owner: "vagrant",
+    group: "vagrant"
+
+  # ----------------------------------------------------------
+  # VirtualBox プロバイダ設定
+  # ----------------------------------------------------------
+  config.vm.provider "virtualbox" do |vb|
+
+    # --- 基本設定 ---
+    vb.name   = "Kali-PenTest-Lab"
+    vb.gui    = true
+    vb.memory = "12288"   # 12GB RAM
+    vb.cpus   = 6         # 6コア（ホスト12コアの半分）
+
+    # --- ディスプレイ設定 ---
+    vb.customize ["modifyvm", :id, "--vram", "128"]
+    vb.customize ["modifyvm", :id, "--graphicscontroller", "vmsvga"]
+    vb.customize ["modifyvm", :id, "--accelerate3d", "off"]
+
+    # --- クリップボード & ドラッグ&ドロップ ---
+    vb.customize ["modifyvm", :id, "--clipboard-mode", "bidirectional"]
+    vb.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+
+    # --- ネットワーク最適化 ---
+    vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"]
+
+    # --- USB パススルー（WiFiアダプタ用）---
+    # ※ VirtualBox Extension Pack のインストールが必要
+    vb.customize ["modifyvm", :id, "--usbehci", "on"]
+    vb.customize ["modifyvm", :id, "--usbxhci", "on"]
+
+    # ----------------------------------------------------------
+    # USB デバイスフィルタ（WiFiアダプタの自動接続）
+    # ----------------------------------------------------------
+    # VBoxManage list usbhost で vendorid/productid を確認して
+    # 使用するアダプタのコメントを外してください
+    #
+    # --- Alfa AWUS036ACH (Realtek RTL8812AU) ---
+    # vb.customize ["usbfilter", "add", "0",
+    #   "--target", :id,
+    #   "--name", "Alfa AWUS036ACH",
+    #   "--vendorid", "0bda",
+    #   "--productid", "8812"]
+    #
+    # --- Alfa AWUS036NHA (Atheros AR9271) ---
+    # vb.customize ["usbfilter", "add", "0",
+    #   "--target", :id,
+    #   "--name", "Alfa AWUS036NHA",
+    #   "--vendorid", "0cf3",
+    #   "--productid", "9271"]
+    #
+    # --- TP-Link TL-WN722N v1 (Atheros AR9271) ---
+    # vb.customize ["usbfilter", "add", "0",
+    #   "--target", :id,
+    #   "--name", "TP-Link TL-WN722N",
+    #   "--vendorid", "0cf3",
+    #   "--productid", "9271"]
+
+    # --- パフォーマンスチューニング ---
+    vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
+    vb.customize ["modifyvm", :id, "--largepages", "on"]
+    vb.customize ["modifyvm", :id, "--spec-ctrl", "off"]
+
+  end
+
+  # ----------------------------------------------------------
+  # プロビジョニング（初回起動時に自動実行）
+  # ----------------------------------------------------------
+  config.vm.provision "shell", privileged: true, inline: <<-SHELL
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "=========================================="
+    echo " [1/7] システムアップデート"
+    echo "=========================================="
+    apt-get update -y
+    apt-get upgrade -y
+
+    echo "=========================================="
+    echo " [2/7] Kali メタパッケージ"
+    echo "=========================================="
+    apt-get install -y kali-linux-large
+
+    echo "=========================================="
+    echo " [3/7] Web アプリケーションテストツール"
+    echo "=========================================="
+    apt-get install -y \
+      burpsuite \
+      zaproxy \
+      nikto \
+      dirb \
+      gobuster \
+      feroxbuster \
+      sqlmap \
+      wfuzz \
+      ffuf \
+      whatweb \
+      wafw00f \
+      sublist3r \
+      amass
+
+    echo "=========================================="
+    echo " [4/7] ネットワーク / インフラツール"
+    echo "=========================================="
+    apt-get install -y \
+      nmap \
+      masscan \
+      wireshark \
+      tcpdump \
+      netdiscover \
+      arp-scan \
+      enum4linux \
+      smbclient \
+      smbmap \
+      crackmapexec \
+      responder \
+      impacket-scripts \
+      evil-winrm \
+      proxychains4 \
+      chisel \
+      ligolo-ng
+
+    echo "=========================================="
+    echo " [5/7] WiFi / 無線テストツール"
+    echo "=========================================="
+    apt-get install -y \
+      aircrack-ng \
+      kismet \
+      wifite \
+      reaver \
+      bully \
+      pixiewps \
+      hostapd-wpe \
+      mdk4 \
+      hcxdumptool \
+      hcxtools
+
+    echo "=========================================="
+    echo " [6/7] Active Directory テストツール"
+    echo "=========================================="
+    apt-get install -y \
+      bloodhound \
+      neo4j \
+      kerbrute \
+      rubeus \
+      mimikatz \
+      powershell \
+      ldapdomaindump
+
+    neo4j-admin dbms set-initial-password bloodhound 2>/dev/null || true
+
+    echo "=========================================="
+    echo " [7/7] 追加ユーティリティ & クリーンアップ"
+    echo "=========================================="
+    apt-get install -y \
+      seclists \
+      wordlists \
+      exploitdb \
+      searchsploit \
+      metasploit-framework \
+      john \
+      hashcat \
+      hydra \
+      python3-pip \
+      golang-go \
+      docker.io \
+      tmux \
+      flameshot \
+      terminator \
+      virtualbox-guest-x11
+
+    usermod -aG docker vagrant
+
+    apt-get autoremove -y
+    apt-get clean
+
+    echo "=========================================="
+    echo " セットアップ完了！再起動します..."
+    echo "=========================================="
+
+  SHELL
+
+  # ----------------------------------------------------------
+  # プロビジョニング後に自動リブート [vagrant-reload]
+  # ----------------------------------------------------------
+  # vagrant-reload プラグインにより、プロビジョニングチェーン内で
+  # 安全にリブートできる。将来ステージを分割する場合にも対応可能。
+  config.vm.provision :reload
+
+end

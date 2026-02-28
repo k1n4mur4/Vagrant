@@ -39,15 +39,14 @@ Vagrant.configure("2") do |config|
   # ----------------------------------------------------------
   # vagrant-cachier 設定
   # ----------------------------------------------------------
-  # apt パッケージのキャッシュをホスト側に保存
-  # → vagrant destroy → up してもダウンロードをスキップできる
-  if Vagrant.has_plugin?("vagrant-cachier")
-    config.cache.scope = :box
-    config.cache.auto_detect = true
-    config.cache.enable :apt
-    config.cache.enable :gem
-    config.cache.enable :pip
-  end
+  # 注意: Kali の apt upgrade と共有フォルダの相性問題により無効化
+  # 有効にする場合は vagrant-cachier のNFS対応が必要
+  # if Vagrant.has_plugin?("vagrant-cachier")
+  #   config.cache.scope = :box
+  #   config.cache.auto_detect = true
+  #   config.cache.enable :apt
+  #   config.cache.enable :gem
+  # end
 
   # ----------------------------------------------------------
   # ネットワーク設定
@@ -57,8 +56,7 @@ Vagrant.configure("2") do |config|
   # 起動時にブリッジ先のNICを選択するプロンプトが出ます
   # 特定のNICを固定したい場合は以下のように bridge を指定:
   #   config.vm.network "public_network", bridge: "Intel(R) Wi-Fi 6 AX201 160MHz"
-#   config.vm.network "public_network"
-  config.vm.network "public_network", bridge: "Intel(R) Wi-Fi 6E AX211 160MHz"
+  config.vm.network "public_network"
 
   # ホストオンリー（VM ↔ ホスト間の管理用）
   config.vm.network "private_network", ip: "192.168.56.100"
@@ -211,11 +209,16 @@ Vagrant.configure("2") do |config|
     apt-get install -y \
       bloodhound \
       neo4j \
-      kerbrute \
       rubeus \
       mimikatz \
-      powershell \
-      ldapdomaindump
+      powershell
+
+    # ldapdomaindump (Python)
+    pip3 install ldapdomaindump --break-system-packages
+
+    # kerbrute (Go バイナリを GitHub から取得)
+    wget -q https://github.com/ropnop/kerbrute/releases/latest/download/kerbrute_linux_amd64 \
+      -O /usr/local/bin/kerbrute && chmod +x /usr/local/bin/kerbrute
 
     neo4j-admin dbms set-initial-password bloodhound 2>/dev/null || true
 
@@ -226,7 +229,6 @@ Vagrant.configure("2") do |config|
       seclists \
       wordlists \
       exploitdb \
-      searchsploit \
       metasploit-framework \
       john \
       hashcat \

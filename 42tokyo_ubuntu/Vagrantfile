@@ -1,0 +1,174 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# ============================================================
+#	Vagrantfile — Ubuntu 22.04 LTS (jammy) 環境複製
+#	ベース: ubuntu/jammy64
+#	ネットワーク: bridged (public network)
+# ============================================================
+
+Vagrant.configure("2") do |config|
+
+	# ----------------------------------------------------------
+	#	Box
+	# ----------------------------------------------------------
+	config.vm.box = "ubuntu/jammy64"
+	config.vm.box_check_update = true
+
+	# ----------------------------------------------------------
+	#	ホスト名
+	# ----------------------------------------------------------
+	config.vm.hostname = "jammy-dev"
+
+	# ----------------------------------------------------------
+	#	ネットワーク: パブリックIP (bridged)
+	#	起動時にホスト側のNICを選択するプロンプトが表示されます
+	# ----------------------------------------------------------
+	config.vm.network "public_network"
+
+	# ----------------------------------------------------------
+	#	VirtualBox プロバイダ設定
+	#	CPU / メモリはホスト環境に合わせて調整してください
+	# ----------------------------------------------------------
+	config.vm.provider "virtualbox" do |vb|
+		vb.name	 = "ubuntu-22.04-dev"
+		vb.cpus	 = 2			# 必要に応じて変更 (1 / 2 / 4 / 8)
+		vb.memory = 4096	 # GUI(GNOME)には4GB推奨。変更する場合: 2048 / 4096 / 8192
+
+		# GNOME GUI を有効化
+		vb.gui = true
+
+		# ビデオメモリ (GUIには128MB推奨)
+		vb.customize ["modifyvm", :id, "--vram", "128"]
+
+		# クリップボード双方向共有
+		vb.customize ["modifyvm", :id, "--clipboard-mode", "bidirectional"]
+
+		# ドラッグ&ドロップ
+		vb.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+
+		# 3Dアクセラレーション
+		vb.customize ["modifyvm", :id, "--accelerate3d", "on"]
+	end
+
+	# ----------------------------------------------------------
+	#	共有フォルダ (任意)
+	#	ホスト側のカレントディレクトリを /vagrant にマウント済み
+	#	追加したい場合はコメントアウトを解除して編集
+	# ----------------------------------------------------------
+	# config.vm.synced_folder "./shared", "/home/vagrant/shared"
+
+	# ----------------------------------------------------------
+	#	プロビジョニング
+	# ----------------------------------------------------------
+	config.vm.provision "shell", inline: <<-SHELL
+
+		set -e
+		echo "============================================"
+		echo " [1/6] システムアップデート"
+		echo "============================================"
+		apt-get update -y
+		apt-get upgrade -y
+
+		echo "============================================"
+		echo " [2/6] 開発ツール (build-essential / GCC / Clang / CMake)"
+		echo "============================================"
+		apt-get install -y \
+			build-essential \
+			gcc gcc-10 gcc-11 gcc-12 \
+			g++ g++-10 g++-11 g++-12 \
+			make \
+			cmake \
+			clang-12 clang-tidy-12 clang-tools-12 \
+			xxd \
+			rake
+
+		echo "============================================"
+		echo " [3/6] ネットワーク / SSH ツール"
+		echo "============================================"
+		apt-get install -y \
+			curl \
+			wget \
+			git \
+			netcat-openbsd \
+			openssh-client \
+			openssh-server \
+			ufw
+
+		echo "============================================"
+		echo " [4/6] 言語ランタイム (Python / Ruby / Node.js)"
+		echo "============================================"
+		# Python 3.10 + pip
+		apt-get install -y \
+			python3 \
+			python3-pip \
+			python3-dev
+
+		# Ruby 3.0
+		apt-get install -y ruby
+
+		# Node.js 12.x (元環境に合わせる)
+		# ※ より新しいバージョンが必要な場合は NodeSource 経由で変更可能
+		apt-get install -y nodejs npm
+
+		echo "============================================"
+		echo " [5/6] PHP 8.1"
+		echo "============================================"
+		apt-get install -y \
+			php8.1 \
+			php8.1-curl \
+			php-curl
+
+		echo "============================================"
+		echo " [6/7] GNOME デスクトップ環境"
+		echo "============================================"
+		apt-get install -y \
+			ubuntu-desktop \
+			gnome-session \
+			gnome-terminal \
+			gdm3 \
+			virtualbox-guest-dkms \
+			virtualbox-guest-utils \
+			virtualbox-guest-x11
+
+		# ディスプレイマネージャを GDM3 に設定
+		systemctl set-default graphical.target
+		systemctl enable gdm3
+
+		echo "============================================"
+		echo " [7/8] snap パッケージ (Chromium / Firefox)"
+		echo "============================================"
+		apt-get install -y snapd
+		systemctl enable snapd
+		systemctl start snapd
+		snap install chromium
+		snap install firefox
+
+		echo "============================================"
+		echo " [8/8] pip パッケージ (42School ツール)"
+		echo "============================================"
+		pip3 install --break-system-packages \
+			norminette==3.3.58 \
+			c-formatter-42 \
+			GitPython \
+			speedtest-cli \
+			rich \
+			supervisor \
+			halo \
+			tqdm \
+			termcolor \
+			PyYAML
+
+		echo "============================================"
+		echo " SSH サービス有効化"
+		echo "============================================"
+		systemctl enable ssh
+		systemctl start ssh
+
+		echo ""
+		echo "✅	プロビジョニング完了！"
+		echo "		vagrant ssh でログインできます。"
+
+	SHELL
+
+end

@@ -242,6 +242,23 @@ Vagrant.configure("2") do |config|
       virtualbox-guest-x11
 
     usermod -aG docker vagrant
+    # ----------------------------------------------------------
+    # Guest Additions & 画面解像度設定
+    # ----------------------------------------------------------
+    apt-get install -y virtualbox-guest-x11 virtualbox-guest-utils
+
+    # デフォルト解像度を 1920x1080 に設定（vagrant ユーザーのログイン時に適用）
+    mkdir -p /home/vagrant/.config/autostart
+    cat <<'EOF' > /home/vagrant/.config/autostart/resolution.desktop
+[Desktop Entry]
+Type=Application
+Name=Set Resolution
+Exec=xrandr --output Virtual-1 --mode 1920x1080
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+EOF
+    chown -R vagrant:vagrant /home/vagrant/.config/autostart
 
     apt-get autoremove -y
     apt-get clean

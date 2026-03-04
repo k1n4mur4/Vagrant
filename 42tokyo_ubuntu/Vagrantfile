@@ -7,6 +7,18 @@
 #	ネットワーク: bridged (public network)
 # ============================================================
 
+# ----------------------------------------------------------
+#	VM名の一意性確保: 初回起動時にタイムスタンプを生成し保存
+#	vagrant destroy 時に削除 → 次回 vagrant up で新しい名前が付く
+# ----------------------------------------------------------
+vm_timestamp_file = File.join(__dir__, ".vm_timestamp")
+if File.exist?(vm_timestamp_file)
+	vm_timestamp = File.read(vm_timestamp_file).strip
+else
+	vm_timestamp = Time.now.strftime("%Y%m%d%H%M")
+	File.write(vm_timestamp_file, vm_timestamp)
+end
+
 Vagrant.configure("2") do |config|
 
 	# ----------------------------------------------------------
@@ -31,7 +43,7 @@ Vagrant.configure("2") do |config|
 	#	CPU / メモリはホスト環境に合わせて調整してください
 	# ----------------------------------------------------------
 	config.vm.provider "virtualbox" do |vb|
-		vb.name	 = "ubuntu-22.04-dev"
+		vb.name	 = "ubuntu-22.04-dev-#{vm_timestamp}"
 		vb.cpus	 = 2			# 必要に応じて変更 (1 / 2 / 4 / 8)
 		vb.memory = 4096	 # GUI(GNOME)には4GB推奨。変更する場合: 2048 / 4096 / 8192
 
@@ -172,5 +184,22 @@ Vagrant.configure("2") do |config|
 		echo "		vagrant ssh でログインできます。"
 
 	SHELL
+
+	# ----------------------------------------------------------
+	#	プロビジョニング後にリブート (GNOME/GDM3 反映)
+	#	要: vagrant plugin install vagrant-reload
+	# ----------------------------------------------------------
+	config.vm.provision :reload
+
+	# ----------------------------------------------------------
+	#	vagrant destroy 時にタイムスタンプファイルを削除
+	# ----------------------------------------------------------
+	config.trigger.after :destroy do |trigger|
+		trigger.info = "タイムスタンプファイルを削除..."
+		trigger.ruby do |env, machine|
+			ts_file = File.join(__dir__, ".vm_timestamp")
+			File.delete(ts_file) if File.exist?(ts_file)
+		end
+	end
 
 end
